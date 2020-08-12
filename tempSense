@@ -3,13 +3,6 @@
 import sys
 import os
 from argparse import ArgumentParser, Namespace
-from pathlib import Path
-
-""" 
-COMMON
-"""
-
-__DATA__ = '/tmp/tempSensor'
 
 
 def options_parser() -> Namespace:
