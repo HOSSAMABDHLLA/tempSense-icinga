@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+from argparse import ArgumentParser, Namespace
+from pathlib import Path
+
+""" 
+COMMON
+"""
+
+__DATA__ = '/tmp/tempSensor'
+
+
+def options_parser() -> Namespace:
+
+    parser = ArgumentParser('tempSense')
+    parser.add_argument('-id', '--id', help='Hwmon device ID (0 - for hwmon0, 1 - for hwmon1 etc.)')
+    parser.add_argument('-s', '--sensor', required=True,
+                        help='Sensor which to be read (temp1_input - for direct access)')
+
+    parser.add_argument('-w', dest='warning', type=int, help='Warning threshold')
+    parser.add_argument('-c', dest='critical', type=int, help='Critical threshold')
+
+    parser.add_argument('-l', '--label', help='Label for the data (will be read from <sensor>_label if not specified)')
+    return parser.parse_args()
+
+
+def path_search(searched: str) -> list:
+    _base = ''
+    _sub = ''
+    _content = []
+    _full_path_content = []
+    for path in os.walk('/sys/devices/'):
+        if 'hwmon' in path[1]:
+            for p in path[1]:
+                # print(os.path.join(path[0], p))
+                if searched in os.listdir(os.path.join(path[0], p)):
+                    _base = path[0]
+                    _sub = p
+                    _content = os.listdir(os.path.join(path[0], p, searched))
+
+    if len(_content) > 0:
+        for c in _content:
+            _full_path_content.append(os.path.join(_base, _sub, searched, c))
+
+    return _full_path_content
+
+
+def read_sensor_data(sensor_input: str):
+
+    f = open(sensor_input, 'r')
+    d = f.read().strip()
+    f.close()
+    if d.isnumeric():
+        return round(int(d)/1000, 2)
+    return d
+
+
+if __name__ == '__main__':
+
+    options = options_parser()
+    sens_read = None
+    paths = path_search('hwmon{}'.format(options.id))
+    if '_input' not in options.sensor:
+        options.sensor = options.sensor + '_input'
+    for p in paths:
+        if options.sensor in p:
+            sens_read = read_sensor_data(p)
+
+    label_reading = ''
+    if not options.label:
+        """
+        Get the label from the file in sys
+        """
+        label = options.sensor.replace('_input', '_label')
+        label_reading = ''
+        for p in paths:
+            if label in p:
+                label_reading = read_sensor_data(p)
+    else:
+        label_reading = options.label
+
+    exit_code = 0
+
+    status_line = 'OK sensor Value: {} | {}={}'.format(sens_read, label_reading, sens_read)
+    if options.warning and options.critical:
+        status_line = status_line = 'OK sensor Value: {} | {}={};{};{}'.format(
+            sens_read, label_reading, sens_read, options.warning, options.critical)
+        if options.critical < sens_read:
+            exit_code = 2
+            status_line = 'CRITICAL sensor Value: {} | {}={};{};{}'.format(
+                sens_read, label_reading, sens_read, options.warning, options.critical
+            )
+        elif options.warning < sens_read:
+            exit_code = 1
+            status_line = 'WARNING sensor Value: {} | {}={};{};{}'.format(
+                sens_read, label_reading, sens_read, options.warning, options.critical
+            )
+    print(status_line)
+    sys.exit(exit_code)
